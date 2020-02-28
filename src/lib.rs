@@ -108,6 +108,7 @@
 //! You can come ask for help at
 //! [diesel_geometry devs mailing list](mailto:diesel_geometry-devel@thinkalexandria.com)
 
+extern crate geo_types;
 extern crate byteorder;
 #[cfg(test)]
 #[macro_use]
@@ -120,6 +121,7 @@ extern crate serde;
 extern crate diesel;
 
 pub mod data_types;
+pub mod from_geo_types;
 
 pub mod expression;
 

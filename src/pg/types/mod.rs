@@ -3,6 +3,22 @@
 pub mod geometric;
 
 pub mod sql_types {
+    #[derive(Debug, Clone, Copy, Default, QueryId, SqlType)]
+    #[postgres(type_name = "geometry")]
+    pub struct Geometry;
+
+    #[derive(Debug, Clone, Copy, Default, QueryId, SqlType)]
+    #[postgres(type_name = "multipoint")]
+    pub struct MultiPoint;
+    #[derive(Debug, Clone, Copy, Default, QueryId, SqlType)]
+    #[postgres(type_name = "linestring")]
+    pub struct LineString;
+    #[derive(Debug, Clone, Copy, Default, QueryId, SqlType)]
+    #[postgres(type_name = "polygon")]
+    pub struct Polygon;
+    #[derive(Debug, Clone, Copy, Default, QueryId, SqlType)]
+    #[postgres(type_name = "multipolygon")]
+    pub struct MultiPolygon;
     /// The PostgreSQL [Point](https://www.postgresql.org/docs/current/static/datatype-geometric.html) type.
     ///
     /// ### [`ToSql`](::diesel::serialize::ToSql) impls

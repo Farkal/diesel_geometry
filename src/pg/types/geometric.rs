@@ -1,7 +1,8 @@
 //! Support for Geometric types under PostgreSQL.
 
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
-use std::io::prelude::*;
+// use std::io::prelude::*;
+use std::io::Write;
 
 use diesel::deserialize::{self, FromSql};
 use diesel::expression::bound::Bound;
@@ -9,7 +10,42 @@ use diesel::expression::AsExpression;
 use diesel::pg::Pg;
 use diesel::serialize::{self, IsNull, Output, ToSql};
 use diesel::sql_types::Nullable;
-use sql_types::{self, Circle, Point};
+use sql_types::{self, Circle, Geometry, LineString, MultiPoint, MultiPolygon, Point, Polygon};
+
+#[derive(Debug, Clone, PartialEq, FromSqlRow, AsExpression)]
+#[sql_type = "Geometry"]
+pub enum PgGeometry {
+    Point(PgPoint),
+    Rect(PgBox),
+    MultiPoint(PgMultiPoint),
+    LineString(PgLineString),
+    Polygon(PgPolygon),
+    MultiPolygon(PgMultiPolygon),
+}
+
+impl FromSql<Geometry, Pg> for PgGeometry {
+    fn from_sql(bytes: Option<&[u8]>) -> deserialize::Result<Self> {
+        let mut bytes = not_none!(bytes);
+        println!("BYTES RECEIVED {:?}", bytes);
+        Ok(PgGeometry::Point(PgPoint(0.0, 0.0)))
+    }
+}
+
+impl ToSql<Geometry, Pg> for PgGeometry {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
+        match self {
+            PgGeometry::Point(v) => <PgPoint as ToSql<Point, Pg>>::to_sql(v, out)?,
+            PgGeometry::Rect(v) => <PgBox as ToSql<sql_types::Box, Pg>>::to_sql(v, out)?,
+            PgGeometry::MultiPoint(v) => <PgMultiPoint as ToSql<MultiPoint, Pg>>::to_sql(v, out)?,
+            PgGeometry::LineString(v) => <PgLineString as ToSql<LineString, Pg>>::to_sql(v, out)?,
+            PgGeometry::Polygon(v) => <PgPolygon as ToSql<Polygon, Pg>>::to_sql(v, out)?,
+            PgGeometry::MultiPolygon(v) => {
+                <PgMultiPolygon as ToSql<MultiPolygon, Pg>>::to_sql(v, out)?
+            }
+        };
+        Ok(IsNull::No)
+    }
+}
 
 /// Point is represented in Postgres as a tuple of 64 bit floating point values (x, y).  This
 /// struct is a dumb wrapper type, meant only to indicate the tuple's meaning.
@@ -136,6 +172,106 @@ impl ToSql<sql_types::Circle, Pg> for PgCircle {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, FromSqlRow, AsExpression)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[sql_type = "MultiPoint"]
+pub struct PgMultiPoint(pub Vec<PgPoint>);
+
+impl FromSql<sql_types::MultiPoint, Pg> for PgMultiPoint {
+    fn from_sql(bytes: Option<&[u8]>) -> deserialize::Result<Self> {
+        let bytes = not_none!(bytes);
+        println!("MULTI POINT BYTES RECEIVED {:?}", bytes);
+        Ok(PgMultiPoint(vec![PgPoint(0.0, 0.0), PgPoint(0.0, 0.0)]))
+    }
+}
+
+impl ToSql<sql_types::MultiPoint, Pg> for PgMultiPoint {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
+        for point in &self.0 {
+            <PgPoint as ToSql<Point, Pg>>::to_sql(point, out)?;
+        }
+        Ok(IsNull::No)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, FromSqlRow, AsExpression)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[sql_type = "LineString"]
+pub struct PgLineString(pub Vec<PgPoint>);
+
+impl FromSql<sql_types::LineString, Pg> for PgLineString {
+    fn from_sql(bytes: Option<&[u8]>) -> deserialize::Result<Self> {
+        let bytes = not_none!(bytes);
+        println!("LINE STRING BYTES RECEIVED {:?}", bytes);
+        Ok(PgLineString(vec![PgPoint(0.0, 0.0), PgPoint(0.0, 0.0)]))
+    }
+}
+
+impl ToSql<sql_types::LineString, Pg> for PgLineString {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
+        for point in &self.0 {
+            <PgPoint as ToSql<Point, Pg>>::to_sql(point, out)?;
+        }
+        Ok(IsNull::No)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, FromSqlRow, AsExpression)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[sql_type = "Polygon"]
+pub struct PgPolygon(pub Vec<PgLineString>);
+
+impl FromSql<sql_types::Polygon, Pg> for PgPolygon {
+    fn from_sql(bytes: Option<&[u8]>) -> deserialize::Result<Self> {
+        let bytes = not_none!(bytes);
+        println!("PgPolygon BYTES RECEIVED {:?}", bytes);
+        Ok(PgPolygon(vec![
+            PgLineString(vec![PgPoint(0.0, 0.0)]),
+            PgLineString(vec![PgPoint(0.0, 0.0)]),
+        ]))
+    }
+}
+
+impl ToSql<sql_types::Polygon, Pg> for PgPolygon {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
+        for linestring in &self.0 {
+            <PgLineString as ToSql<LineString, Pg>>::to_sql(linestring, out)?;
+        }
+        Ok(IsNull::No)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, FromSqlRow, AsExpression)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[sql_type = "MultiPolygon"]
+pub struct PgMultiPolygon(pub Vec<PgPolygon>);
+
+impl FromSql<sql_types::MultiPolygon, Pg> for PgMultiPolygon {
+    fn from_sql(bytes: Option<&[u8]>) -> deserialize::Result<Self> {
+        let bytes = not_none!(bytes);
+        println!("PgMultiPolygon BYTES RECEIVED {:?}", bytes);
+        Ok(PgMultiPolygon(vec![
+            PgPolygon(vec![
+                PgLineString(vec![PgPoint(0.0, 0.0)]),
+                PgLineString(vec![PgPoint(1.0, 0.0)]),
+            ]),
+            PgPolygon(vec![
+                PgLineString(vec![PgPoint(0.0, 0.0)]),
+                PgLineString(vec![PgPoint(1.0, 0.0)]),
+            ]),
+        ]))
+    }
+}
+
+impl ToSql<sql_types::MultiPolygon, Pg> for PgMultiPolygon {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
+        for polygon in &self.0 {
+            <PgPolygon as ToSql<Polygon, Pg>>::to_sql(polygon, out)?;
+        }
+        Ok(IsNull::No)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use diesel;
@@ -221,7 +357,8 @@ mod tests {
             .values(&NewItem {
                 name: "Shiny Thing",
                 location: PgPoint(3.1, 9.4),
-            }).returning(schema::items::dsl::location);
+            })
+            .returning(schema::items::dsl::location);
     }
 
     #[test]
@@ -250,7 +387,8 @@ mod tests {
             id SERIAL PRIMARY KEY,
             boxes BOX
         )",
-            ).unwrap();
+            )
+            .unwrap();
         use self::schema::box_roundtrip;
         #[derive(Debug, PartialEq, Insertable, Queryable)]
         #[table_name = "box_roundtrip"]
@@ -285,13 +423,15 @@ mod tests {
             point
                 .into_sql::<Point>()
                 .is_contained_by(bounding_circle.into_sql::<Circle>()),
-        ).get_result::<bool>(&connection)
+        )
+        .get_result::<bool>(&connection)
         .unwrap();
         assert!(is_contained);
         let is_contained = diesel::select(
             AsExpression::<Point>::as_expression(point)
                 .is_contained_by(bounding_box.into_sql::<sql_types::Box>()),
-        ).get_result::<bool>(&connection)
+        )
+        .get_result::<bool>(&connection)
         .unwrap();
         assert!(is_contained);
     }
@@ -305,7 +445,8 @@ mod tests {
             id SERIAL PRIMARY KEY,
             circles CIRCLE
         )",
-            ).unwrap();
+            )
+            .unwrap();
         use self::schema::circle_roundtrip;
         #[derive(Debug, PartialEq, Insertable, Queryable)]
         #[table_name = "circle_roundtrip"]
